@@ -1,7 +1,7 @@
 # Design system
 
-Use a warm paper background, dark evergreen text, soft rules, and a strong terracotta accent. Pair editorial serif headlines with readable sans-serif interface text. Use gentle rectangular surfaces and reserve pills for compact status or time labels.
+The interface uses neutral whites and grays, system sans-serif typography, and a controlled orange accent. Appearance follows the operating system by default. The header control stores an explicit light or dark preference on the device and restores it before the page renders.
 
-The learning home prioritizes the next meaningful action. Quick Learning uses a green treatment and direct actions. University uses a paper treatment with structured course information. Use consistent terminology for progress, mastery, and revision. Empty states explain how real activity will appear.
+Use flat surfaces for reading and structured content, with translucent gradients, fine highlights, and blur on interactive controls. Save the dark backdrop and glass-book artwork for the featured course banner. Recommended courses use approved Library items when available and include open courses from Harvard, MIT, and Yale.
 
-On wide screens, keep the navigation in a side rail. On narrow screens, allow the same links to scroll horizontally. Use visible keyboard focus, semantic landmarks, and fluid type that fits small displays.
+Navigation sits in a compact header, with a separate scrollable row on narrow screens. Controls retain visible keyboard focus, accessible names, reduced-motion support, and system-styled form inputs in both themes.
