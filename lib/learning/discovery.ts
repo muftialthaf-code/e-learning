@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { relevance, resourceSchema, type Resource } from "./model";
 
 function collect(rows: unknown[]) {
@@ -7,26 +8,52 @@ function collect(rows: unknown[]) {
   });
 }
 
-export async function discover(topic: string, fetcher = fetch, config: Record<string, string | undefined> = process.env) {
+const firecrawlResponse = z.object({
+  success: z.literal(true),
+  data: z.object({ web: z.array(z.unknown()).optional() }),
+});
+const firecrawlResult = z.object({
+  url: z.string(),
+  title: z.string(),
+  description: z.string().nullish(),
+});
+
+type DiscoveryConfig = Record<string, string | undefined>;
+
+export function discoveryConfigured(config: DiscoveryConfig = process.env) {
+  return Boolean(config.FIRECRAWL_API_KEY || config.YOUTUBE_API_KEY);
+}
+
+export async function discover(topic: string, fetcher = fetch, config: DiscoveryConfig = process.env) {
   const checked_at = new Date().toISOString();
   const providers: Promise<Resource[]>[] = [];
-  const brave = config.BRAVE_SEARCH_API_KEY;
+  const firecrawl = config.FIRECRAWL_API_KEY;
   const youtube = config.YOUTUBE_API_KEY;
 
-  if (brave) providers.push((async () => {
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.search = new URLSearchParams({ q: `${topic} free open course syllabus`, count: "12" }).toString();
-    const response = await fetcher(url, {
-      headers: { "X-Subscription-Token": brave, Accept: "application/json" },
+  if (firecrawl) providers.push((async () => {
+    const response = await fetcher("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${firecrawl}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: `${topic} free open course syllabus`, limit: 5, sources: ["web"] }),
       signal: AbortSignal.timeout(8000),
       next: { revalidate: 3600 },
     });
     if (!response.ok) throw new Error("Search provider failed");
-    const data = await response.json() as { web?: { results?: { url: string; title: string; description: string }[] } };
-    return collect((data.web?.results ?? []).map(row => {
+    const { data } = firecrawlResponse.parse(await response.json());
+    return collect((data.web ?? []).flatMap(item => {
+      const row = firecrawlResult.safeParse(item);
+      if (!row.success) return [];
       let publisher = "";
-      try { publisher = new URL(row.url).hostname; } catch { /* Invalid URLs are discarded. */ }
-      return { ...row, publisher, checked_at, kind: "course", provenance: "web_search" };
+      try { publisher = new URL(row.data.url).hostname; } catch { return []; }
+      return [{
+        url: row.data.url,
+        title: row.data.title.slice(0, 300),
+        description: row.data.description?.slice(0, 1600) ?? "",
+        publisher,
+        checked_at,
+        kind: "course",
+        provenance: "web_search",
+      }];
     }));
   })());
 

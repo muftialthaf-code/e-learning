@@ -1,4 +1,4 @@
-import { discover } from "../../lib/learning/discovery";
+import { discover, discoveryConfigured } from "../../lib/learning/discovery";
 import { relevance, topicSchema } from "../../lib/learning/model";
 import { learner } from "../../lib/learning/server";
 import { saveResource } from "../learning-actions";
@@ -7,7 +7,7 @@ import { AccountPrompt, Heading, SourceCard } from "../learning-ui";
 export default async function Discover({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; compare?: string | string[] }> }) {
   const query = await searchParams;
   const topic = topicSchema.safeParse(query.q);
-  const needsLogin = topic.success && Boolean(process.env.BRAVE_SEARCH_API_KEY || process.env.YOUTUBE_API_KEY) && !(await learner());
+  const needsLogin = topic.success && discoveryConfigured() && !(await learner());
   const discovery = topic.success && !needsLogin ? await discover(topic.data) : null;
   const selected = new Set([query.compare].flat());
   const comparison = discovery?.results.filter(result => selected.has(result.url)).slice(0, 4) ?? [];
