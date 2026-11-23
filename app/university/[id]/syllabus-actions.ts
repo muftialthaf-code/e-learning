@@ -34,7 +34,8 @@ export async function previewPublisherSyllabus(form: FormData) {
   const cached = await account.client.from("syllabus_previews").select("fetched_at,titles")
     .eq("resource_id", id).eq("source_url", source).maybeSingle();
   if (cached.error) redirect(`${path}?publisher=storage#syllabus`);
-  if (cached.data && Date.now() - Date.parse(cached.data.fetched_at) < syllabusCacheMs) {
+  const retryEmpty = form.get("retryEmpty") === "yes" && cached.data?.titles.length === 0;
+  if (!retryEmpty && cached.data && Date.now() - Date.parse(cached.data.fetched_at) < syllabusCacheMs) {
     redirect(`${path}?publisher=${cached.data.titles.length ? "ready" : "empty"}#syllabus`);
   }
 

@@ -30,7 +30,7 @@ test("fetches Markdown on demand and checks the returned publisher host", async 
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture");
     assert.deepEqual(JSON.parse(String(init?.body)), {
       url: "https://academy.hubspot.com/courses/digital-marketing",
-      formats: ["markdown"], onlyMainContent: true, timeout: 15000,
+      formats: ["markdown"], onlyMainContent: false, timeout: 15000,
     });
     return Response.json({ success: true, data: { markdown: "## Modules\n- SEO", metadata: { url: source } } });
   });
@@ -40,4 +40,22 @@ test("fetches Markdown on demand and checks the returned publisher host", async 
   await assert.rejects(fetchPublisherSyllabus(source, "fixture", async () =>
     Response.json({ success: true, data: { markdown: "## Modules\n- SEO", metadata: { url: "https://unrelated.com" } } })),
   /different site/);
+});
+
+test("handles collapsed-style course cards and split lesson labels", () => {
+  const markdown = [
+    "## Digital Marketing",
+    "**Course Curriculum (6 lessons)**",
+    "[Content strategy](#content)",
+    "**Lesson 2**",
+    "",
+    "Search engine optimisation",
+    "**Social media strategy** · 13 min",
+    "### Lesson 04 | Email campaigns",
+    "### FAQs",
+    "**Will I earn a certificate?**",
+  ].join("\n");
+  assert.deepEqual(extractSyllabus(markdown), [
+    "Content strategy", "Search engine optimisation", "Social media strategy", "Lesson 04 | Email campaigns",
+  ]);
 });

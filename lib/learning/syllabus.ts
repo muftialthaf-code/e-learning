@@ -2,8 +2,10 @@ import { isIP } from "node:net";
 import { z } from "zod";
 import { topicSchema } from "./model";
 
-const sectionName = /^(?:course\s+)?(?:syllabus|curriculum|outline|schedule|(?:course )?content|modules|lessons|topics covered)(?:\s+overview)?\s*:?$/i;
-const moduleName = /^(?:module|lesson|week|unit|section|chapter)\s*\d+\s*[:.\-–—)]\s*\S/i;
+const sectionName = /^(?:(?:course|class)\s+)?(?:syllabus|curriculum|outline|schedule|content|modules|lessons|topics covered)(?:\s+overview)?(?:\s*[:·–-]?\s*\(?\d+\s+(?:lessons|modules|items)\)?)?\s*:?$/i;
+const modulePrefix = /^(?:module|lesson|week|unit|section|chapter)\s*#?\s*\d+\s*[:.\-–—)|]\s*/i;
+const moduleNumber = /^(?:module|lesson|week|unit|section|chapter)\s*#?\s*\d+\s*[:.\-–—)|]?$/i;
+const sectionEnd = /^(?:about (?:this|the) course|who (?:this|it) is for|instructors?|reviews?|testimonials?|frequently asked questions|faqs?|related courses|prerequisites|certification)\s*:?$/i;
 const utility = /^(?:overview|course overview|introduction to the course|read more|learn more|view all|expand all|show more|sign in|log in|enroll(?: now)?|sign up|resources|frequently asked questions|related courses|download.*)$/i;
 const responseSchema = z.object({
   success: z.literal(true),
@@ -42,22 +44,42 @@ export function extractSyllabus(markdown: string): string[] {
   const titles = new Map<string, string>();
   let sectionLevel: number | null = null;
   let fenced = false;
+  let pendingNumber = false;
   for (const raw of markdown.slice(0, 240_000).split(/\r?\n/)) {
     if (raw.trimStart().startsWith("```")) { fenced = !fenced; continue; }
     if (fenced) continue;
-    const heading = /^(#{1,6})\s+(.+)$/.exec(raw.trim());
-    const list = /^(?:[-*+]|\d+[.)])\s+(.+)$/.exec(raw.trim());
-    const text = cleanTitle(heading?.[2] ?? list?.[1] ?? raw);
-    if (heading) {
-      const level = heading[1].length;
-      if (sectionLevel !== null && level <= sectionLevel) sectionLevel = null;
-      if (sectionName.test(text)) { sectionLevel = level; continue; }
+    const line = raw.trim();
+    if (!line) continue;
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    const list = /^(?:[-*+]|\d+[.)])\s+(.+)$/.exec(line);
+    const candidate = (heading?.[2] ?? list?.[1] ?? line)
+      .replace(/\s*(?:[·|–—-]|\()\s*\d+\s*(?:min(?:ute)?s?|hrs?|hours?)\.?\)?$/i, "").trim();
+    const formattedTitle = /^(?:\*\*.+\*\*|__.+__|\[[^\]]+\]\([^)]+\))$/.test(candidate);
+    const text = cleanTitle(candidate);
+    if (heading && sectionLevel !== null && heading[1].length <= sectionLevel) sectionLevel = null;
+    if (sectionName.test(text)) {
+      sectionLevel = heading?.[1].length ?? 0;
+      pendingNumber = false;
+      continue;
     }
-    const explicit = moduleName.test(text);
-    if ((!explicit && (sectionLevel === null || !(heading || list))) || utility.test(text) || /[.!?]$/.test(text)) continue;
+    if (sectionEnd.test(text)) {
+      sectionLevel = null;
+      pendingNumber = false;
+      continue;
+    }
+    if (moduleNumber.test(text)) {
+      pendingNumber = true;
+      continue;
+    }
+
+    const isNumbered = pendingNumber || modulePrefix.test(text);
+    pendingNumber = false;
+    if ((!isNumbered && (sectionLevel === null || !(heading || list || formattedTitle)))
+        || utility.test(text) || /[.!?]$/.test(text) || !/\p{L}/u.test(text)
+        || /^\d+\s+(?:videos?|lessons?|modules?|quizzes?|min(?:ute)?s?|hrs?|hours?)$/i.test(text)) continue;
     const parsed = topicSchema.safeParse(text);
     if (!parsed.success) continue;
-    const key = parsed.data.toLowerCase().replace(/^(?:module|lesson|week|unit|section|chapter)\s*\d+\s*[:.\-–—)]\s*/i, "");
+    const key = parsed.data.toLowerCase().replace(modulePrefix, "");
     if (!titles.has(key)) titles.set(key, parsed.data);
     if (titles.size === 20) break;
   }
@@ -70,7 +92,7 @@ export async function fetchPublisherSyllabus(source: string, key: string, fetche
   const response = await fetcher("https://api.firecrawl.dev/v2/scrape", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ url: url.href, formats: ["markdown"], onlyMainContent: true, timeout: 15000 }),
+    body: JSON.stringify({ url: url.href, formats: ["markdown"], onlyMainContent: false, timeout: 15000 }),
     signal: AbortSignal.timeout(20000),
   });
   if (!response.ok) throw new Error("Publisher page unavailable");

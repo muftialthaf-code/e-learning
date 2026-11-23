@@ -10,7 +10,7 @@ import { syllabusTitles } from "../../../lib/learning/syllabus";
 import { addPublisherModules, editModule, previewPublisherSyllabus, removeModule } from "./syllabus-actions";
 
 const publisherMessages: Record<string, string> = {
-  empty: "No published module titles were found on this page. You can still add your own topics below.",
+  empty: "We couldn’t identify a syllabus in the public page content. You can still add your own topics below.",
   unavailable: "The publisher page could not be read. Try again later or add topics manually.",
   unsupported: "Publisher import requires a public course page. You can add topics manually for this source.",
   source: "The course source could not be loaded.",
@@ -60,7 +60,8 @@ export default async function Course({ params, searchParams }: { params: Promise
       {resource.kind === "course" && <form action={previewPublisherSyllabus}>
         <input type="hidden" name="id" value={id} />
         <p>Preview module titles from the public course page. Fetching a new preview uses Firecrawl credits.</p>
-        <SubmitButton label="Import publisher syllabus" pendingLabel="Reading publisher page…" />
+        {query.publisher === "empty" && <input type="hidden" name="retryEmpty" value="yes" />}
+        <SubmitButton label={query.publisher === "empty" ? "Check publisher page again" : "Import publisher syllabus"} pendingLabel="Reading publisher page…" />
       </form>}
       {publisherMessage && <p role={query.publisher === "added" || query.publisher === "empty" ? "status" : "alert"}>{publisherMessage}</p>}
       {preview?.error && <p role="alert">The publisher preview could not be loaded.</p>}
