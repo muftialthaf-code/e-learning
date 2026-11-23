@@ -162,3 +162,6 @@ summary { cursor: pointer; }
   .glass, .button, .learning-card { transition: none; }
   .glass:hover, .button:hover, .glass:active, .button:active { transform: none; }
 }
+
+.module-controls { margin-top: 4px; }
+.module-controls summary { width: fit-content; color: var(--accent); font-size: 14px; }

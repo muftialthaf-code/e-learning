@@ -23,7 +23,7 @@ test("migrations enforce ownership, budgets, grading idempotency and webhook ret
         as $$ select current_setting('request.jwt.claim.sub', true)::uuid $$;
       insert into auth.users values ('${owner}'),('${other}');
     `);
-    for (const name of ["202611220001_profiles", "202611220002_learning", "202611220003_companion"]) {
+    for (const name of ["202611220001_profiles", "202611220002_learning", "202611220003_companion", "202611230001_publisher_syllabus"]) {
       await db.exec(await readFile(new URL(`../supabase/migrations/${name}.sql`, import.meta.url), "utf8"));
     }
     assert.deepEqual((await db.query("select name from public.profiles")).rows, [{ name: "Existing app" }]);
@@ -70,6 +70,20 @@ test("migrations enforce ownership, budgets, grading idempotency and webhook ret
     );
     await db.exec("reset role; set role service_role");
     await db.query("update course_modules set lesson_id=$1 where resource_id=$2", [id, course]);
+    await db.query("insert into syllabus_previews(owner,resource_id,source_url,titles) values ($1,$2,'https://example.org/course',$3)", [owner, course, JSON.stringify(["Lesson 3: Basis"])]);
+    const published = await db.query<{ id: string }>(
+      "insert into course_modules(owner,resource_id,title,publisher_url,publisher_title) values ($1,$2,'Lesson 3: Basis','https://example.org/course','Lesson 3: Basis') returning id",
+      [owner, course],
+    );
+    await db.exec(`reset role; set role authenticated; set request.jwt.claim.sub = '${owner}'`);
+    assert.equal((await db.query("select titles from syllabus_previews")).rows.length, 1);
+    await assert.rejects(db.query("update course_modules set publisher_title='Faked title'"), { code: "42501" });
+    await assert.rejects(db.query("insert into course_modules(resource_id,title,publisher_title) values ($1,'Fake module','Fake')", [course]), { code: "42501" });
+    await db.query("update course_modules set title='Basis and dimension' where id=$1", [published.rows[0].id]);
+    assert.deepEqual((await db.query("select title, publisher_title from course_modules where id=$1", [published.rows[0].id])).rows,
+      [{ title: "Basis and dimension", publisher_title: "Lesson 3: Basis" }]);
+    await db.query("delete from course_modules where id=$1", [published.rows[0].id]);
+    await db.exec("reset role; set role service_role");
     const examId = "20000000-0000-4000-8000-000000000002";
     const gradeExam = (answers: Record<string, number[]>) =>
       db.query<{ score: string }>("select grade_course_exam($1,$2,$3,$4) as score", [owner, course, examId, JSON.stringify(answers)]);
@@ -97,6 +111,12 @@ test("migrations enforce ownership, budgets, grading idempotency and webhook ret
     assert.deepEqual((await db.query("select id,topic from lessons")).rows, []);
     assert.deepEqual((await db.query("select * from mastery")).rows, []);
     assert.deepEqual((await db.query("select * from practice_feedback")).rows, []);
+    await db.exec(`reset role; insert into allowed_learners values ('${other}'); set role authenticated`);
+    assert.deepEqual((await db.query("select * from syllabus_previews")).rows, []);
+    assert.equal((await db.query("delete from course_modules where resource_id=$1 returning id", [course])).rows.length, 0);
+    await db.exec(`set request.jwt.claim.sub = '${owner}'`);
+    await db.query("delete from course_modules where id=$1", [modules[0].id]);
+    assert.equal((await db.query("select id from lessons where id=$1", [id])).rows.length, 1);
   } finally {
     await db.close();
   }
